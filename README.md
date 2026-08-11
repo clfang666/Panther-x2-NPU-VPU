@@ -1,7 +1,7 @@
 # Panther X2 NPU/VPU Armbian
 
-这是一个独立的 Panther X2 固件构建仓库，不是 ophub 仓库的 Fork。GitHub
-Actions 会获取固定版本的 Armbian 构建框架，生成 Ubuntu 24.04 Noble 镜像，并校验
+🚀本项目完全由chatgpt完成
+GitHub Actions 会获取固定版本的 Armbian 构建框架，生成 Ubuntu 24.04 Noble 镜像，并校验
 Rockchip BSP 6.1 的 VPU、NPU、RGA 和 IEP 驱动配置。
 
 ## 固定构建输入
