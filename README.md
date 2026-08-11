@@ -1,8 +1,8 @@
 # Panther X2 NPU/VPU Armbian
 
-- 🚀本项目完全由chatgpt完成
-- 让Panther X2可以驱动NPU/VPU/GPU
-- 使用NPU需要先安装RKNN-Toolkit2
+- 😺 本项目完全由chatgpt完成
+- 👍 让Panther X2可以驱动NPU/VPU/GPU
+- 😋 使用NPU需要先安装RKNN-Toolkit2
 ```bash
 curl -fL \
   https://raw.githubusercontent.com/clfang666/Panther-x2-NPU-VPU/main/scripts/rknn-manager.sh \
