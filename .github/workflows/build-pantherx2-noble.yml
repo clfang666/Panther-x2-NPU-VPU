@@ -1,0 +1,330 @@
+name: Build Panther X2 Noble BSP 6.1
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the verified image to a GitHub Release
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-pantherx2-noble.yml
+      - armbian/**
+      - README.md
+
+concurrency:
+  group: pantherx2-noble-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  ARMBIAN_COMMIT: 70a242faa308c57be5ed636897dfee77de350773
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    name: Panther X2 / Ubuntu 24.04 / BSP 6.1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout firmware configuration
+        uses: actions/checkout@v6
+
+      - name: Audit Panther X2 inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -s armbian/config/boards/panther-x2-vendor.csc
+          test -s armbian/userpatches/config-pantherx2-image.conf
+          test -s armbian/userpatches/kernel/rk35xx-vendor-6.1/0001-arm64-dts-rockchip-add-panther-x2-bsp61-accel.patch
+          test -s armbian/userpatches/u-boot/u-boot-panther-x2-radxa/9999-fix-radxa-rock3-gcc-compat.patch
+
+          grep -q '^BOARD=panther-x2-vendor$' armbian/userpatches/config-pantherx2-image.conf
+          grep -q '^BRANCH=vendor$' armbian/userpatches/config-pantherx2-image.conf
+          grep -q '^RELEASE=noble$' armbian/userpatches/config-pantherx2-image.conf
+          grep -q 'KERNELBRANCH="commit:5280f9b4336199c4025c8eed894d2b4e2268dcc6"' armbian/config/boards/panther-x2-vendor.csc
+          grep -q 'BOOTBRANCH="commit:c55987146f4f9b20f7cb2f917ca88300419afe8d"' armbian/config/boards/panther-x2-vendor.csc
+          grep -q 'BOOTPATCHDIR="u-boot-panther-x2-radxa"' armbian/config/boards/panther-x2-vendor.csc
+          grep -q 'rk3566-panther-x2.dtb' armbian/userpatches/kernel/rk35xx-vendor-6.1/0001-arm64-dts-rockchip-add-panther-x2-bsp61-accel.patch
+          grep -q 'rknpu-supply = <0x149>' armbian/userpatches/kernel/rk35xx-vendor-6.1/0001-arm64-dts-rockchip-add-panther-x2-bsp61-accel.patch
+
+      - name: Reclaim runner disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker image prune --all --force || true
+          if [[ -n "${AGENT_TOOLSDIRECTORY:-}" ]]; then
+            sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
+          fi
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+          df -hT
+
+      - name: Prepare ARM64 emulation
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install --yes arch-test binfmt-support device-tree-compiler qemu-user-static rsync util-linux xz-utils
+          sudo systemctl restart systemd-binfmt || true
+          sudo update-binfmts --enable qemu-aarch64
+          arch-test arm64
+
+      - name: Fetch pinned Armbian build framework
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo mkdir -p /builder
+          sudo chown "$(id -u):$(id -g)" /builder
+
+          git init /builder/build
+          git -C /builder/build remote add origin https://github.com/armbian/build.git
+          git -C /builder/build fetch --depth=1 origin "${ARMBIAN_COMMIT}"
+          git -C /builder/build checkout --detach FETCH_HEAD
+          test "$(git -C /builder/build rev-parse HEAD)" = "${ARMBIAN_COMMIT}"
+
+          rsync -a "${GITHUB_WORKSPACE}/armbian/" /builder/build/
+          ln -s /builder/build "${GITHUB_WORKSPACE}/armbian-build"
+
+          git -C /builder/build status --short
+
+      - name: Build Ubuntu 24.04 Noble image
+        working-directory: /builder/build
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ./compile.sh \
+            RELEASE=noble \
+            BUILD_DESKTOP=no \
+            BUILD_MINIMAL=no \
+            KERNEL_CONFIGURE=no \
+            KERNEL_BTF=no \
+            EXPERT=yes \
+            pantherx2-image build
+
+      - name: Verify the generated firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          validation="${GITHUB_WORKSPACE}/pantherx2-validation.txt"
+          exec > >(tee "${validation}") 2>&1
+
+          require_file() {
+            local path="$1"
+            local label="$2"
+            if [[ ! -s "${path}" ]]; then
+              echo "::error title=Missing firmware file::${label}: ${path}"
+              return 1
+            fi
+            echo "OK file: ${label}"
+          }
+
+          require_line() {
+            local path="$1"
+            local expression="$2"
+            local label="$3"
+            if ! grep -Eq "${expression}" "${path}"; then
+              echo "::error title=Firmware content mismatch::${label}"
+              return 1
+            fi
+            echo "OK value: ${label}"
+          }
+
+          expect_fdt_status() {
+            local dtb="$1"
+            local node="$2"
+            local expected="$3"
+            local actual
+            actual="$(sudo fdtget -t s "${dtb}" "${node}" status 2>/dev/null || true)"
+            if [[ "${actual}" != "${expected}" ]]; then
+              echo "::error title=DTB status mismatch::${node}: expected=${expected}, actual=${actual:-<missing>}"
+              return 1
+            fi
+            echo "OK DTB status: ${node}=${actual}"
+          }
+
+          expect_fdt_hex() {
+            local dtb="$1"
+            local node="$2"
+            local property="$3"
+            local expected="$4"
+            local actual
+            actual="$(sudo fdtget -t x "${dtb}" "${node}" "${property}" 2>/dev/null || true)"
+            if [[ "${actual}" != "${expected}" ]]; then
+              echo "::error title=DTB property mismatch::${node}/${property}: expected=${expected}, actual=${actual:-<missing>}"
+              return 1
+            fi
+            echo "OK DTB property: ${node}/${property}=${actual}"
+          }
+
+          image="$(find /builder/build/output/images -maxdepth 1 -type f -name '*.img' -print -quit)"
+          if [[ -z "${image}" ]]; then
+            echo '::error title=Missing firmware image::No .img file was generated'
+            exit 1
+          fi
+
+          echo "Image: $(basename "${image}")"
+          sudo fdisk -l "${image}"
+
+          mount_dir="$(mktemp -d)"
+          loopdev=""
+          cleanup() {
+            if mountpoint -q "${mount_dir}/boot"; then
+              sudo umount "${mount_dir}/boot" || true
+            fi
+            if mountpoint -q "${mount_dir}"; then
+              sudo umount "${mount_dir}" || true
+            fi
+            if [[ -n "${loopdev}" ]]; then
+              sudo losetup --detach "${loopdev}" || true
+            fi
+            rmdir "${mount_dir}" || true
+          }
+          trap cleanup EXIT
+
+          loopdev="$(sudo losetup --find --partscan --show "${image}")"
+          for _ in {1..20}; do
+            [[ -b "${loopdev}p1" && -b "${loopdev}p2" ]] && break
+            sleep 1
+          done
+          if [[ ! -b "${loopdev}p1" || ! -b "${loopdev}p2" ]]; then
+            echo "::error title=Partition discovery failed::Expected ${loopdev}p1 and ${loopdev}p2"
+            lsblk "${loopdev}" || true
+            exit 1
+          fi
+
+          sudo mount -o ro "${loopdev}p2" "${mount_dir}"
+          if [[ ! -d "${mount_dir}/boot" ]]; then
+            echo '::error title=Root filesystem invalid::Missing /boot mount point'
+            exit 1
+          fi
+          sudo mount -o ro "${loopdev}p1" "${mount_dir}/boot"
+
+          os_release="${mount_dir}/etc/os-release"
+          armbian_release="${mount_dir}/etc/armbian-release"
+          env_file="${mount_dir}/boot/armbianEnv.txt"
+          kernel_config="${mount_dir}/boot/config-6.1.115-vendor-rk35xx"
+          dtb="${mount_dir}/boot/dtb/rockchip/rk3566-panther-x2.dtb"
+
+          require_file "${os_release}" '/etc/os-release'
+          require_file "${armbian_release}" '/etc/armbian-release'
+          require_file "${mount_dir}/boot/Image" '/boot/Image'
+          require_file "${env_file}" '/boot/armbianEnv.txt'
+          require_file "${kernel_config}" 'kernel configuration'
+          require_file "${dtb}" 'Panther X2 DTB'
+
+          require_line "${os_release}" '^VERSION_ID="24\.04"$' 'Ubuntu version is 24.04'
+          require_line "${os_release}" '^UBUNTU_CODENAME=noble$' 'Ubuntu codename is Noble'
+          require_line "${armbian_release}" '^BOARD=panther-x2-vendor$' 'Armbian board is Panther X2'
+          require_line "${armbian_release}" '^KERNEL_TARGET=vendor$' 'Kernel target is vendor'
+          require_line "${env_file}" '^fdtfile=rockchip/rk3566-panther-x2\.dtb$' 'Boot DTB is Panther X2'
+          require_line "${env_file}" '^extraargs=cma=256M$' 'CMA is 256 MiB'
+
+          require_line "${kernel_config}" '^CONFIG_ROCKCHIP_MULTI_RGA=y$' 'RGA driver enabled'
+          require_line "${kernel_config}" '^CONFIG_IEP=y$' 'IEP driver enabled'
+          require_line "${kernel_config}" '^CONFIG_ROCKCHIP_MPP_SERVICE=y$' 'MPP service enabled'
+          require_line "${kernel_config}" '^CONFIG_ROCKCHIP_MPP_RKVDEC2=y$' 'RKVDEC2 enabled'
+          require_line "${kernel_config}" '^CONFIG_ROCKCHIP_MPP_RKVENC=y$' 'RKVENC enabled'
+          require_line "${kernel_config}" '^CONFIG_ROCKCHIP_RKNPU=y$' 'RKNPU enabled'
+
+          while IFS= read -r node; do
+            expect_fdt_status "${dtb}" "${node}" okay
+          done <<'NODES'
+          /mpp-srv
+          /npu@fde40000
+          /bus-npu
+          /iommu@fde4b000
+          /vdpu@fdea0400
+          /iommu@fdea0800
+          /rk_rga@fdeb0000
+          /jpegd@fded0000
+          /iommu@fded0480
+          /vepu@fdee0000
+          /iommu@fdee0800
+          /iep@fdef0000
+          /iommu@fdef0800
+          /rkvenc@fdf40000
+          /iommu@fdf40f00
+          /rkvdec@fdf80200
+          /iommu@fdf80800
+          NODES
+
+          expect_fdt_status "${dtb}" /video-codec@fdea0400 disabled
+          expect_fdt_hex "${dtb}" /npu@fde40000 rknpu-supply 149
+          expect_fdt_hex "${dtb}" /bus-npu bus-supply 6b
+          expect_fdt_hex "${dtb}" /bus-npu pvtm-supply 5
+
+          grep -E '^(PRETTY_NAME|VERSION_ID|UBUNTU_CODENAME)=' "${os_release}"
+          grep -E '^(BOARD|BOARD_NAME|BOARDFAMILY|KERNEL_TARGET|VERSION)=' "${armbian_release}"
+          echo "Kernel config: $(basename "${kernel_config}")"
+          echo 'VPU/NPU/RGA/IEP image validation: passed'
+
+      - name: Compress and checksum image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd /builder/build/output/images
+          image="$(find . -maxdepth 1 -type f -name '*.img' -print -quit)"
+          test -n "${image}"
+          xz --threads=0 -3 --force "${image}"
+          sha256sum "${image}.xz" > "${image}.xz.sha256"
+          ls -lh .
+
+      - name: Upload verified firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: Panther-X2-Noble-BSP61-${{ github.run_number }}
+          path: |
+            /builder/build/output/images/*.img.xz
+            /builder/build/output/images/*.img.xz.sha256
+            pantherx2-validation.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Upload validation report and build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Panther-X2-build-logs-${{ github.run_number }}
+          path: |
+            /builder/build/output/logs/
+            pantherx2-validation.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.publish_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="pantherx2-noble-${GITHUB_RUN_NUMBER}"
+          gh release create "${tag}" \
+            /builder/build/output/images/*.img.xz \
+            /builder/build/output/images/*.img.xz.sha256 \
+            "${GITHUB_WORKSPACE}/pantherx2-validation.txt" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "Panther X2 Ubuntu 24.04 BSP 6.1 build ${GITHUB_RUN_NUMBER}" \
+            --notes "Verified Panther X2 Noble image built from Armbian ${ARMBIAN_COMMIT}."

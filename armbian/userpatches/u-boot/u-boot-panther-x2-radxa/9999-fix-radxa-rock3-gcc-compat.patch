@@ -1,0 +1,26 @@
+diff --git a/drivers/mmc/rockchip_dw_mmc.c b/drivers/mmc/rockchip_dw_mmc.c
+index a2e016f7361bc6c0a67d1d3c651c93d248313520..32f2fd84427b47b0012d31275d81688e9abb0546 100644
+--- a/drivers/mmc/rockchip_dw_mmc.c
++++ b/drivers/mmc/rockchip_dw_mmc.c
+@@ -42,7 +42,7 @@ int board_mmc_dm_reinit(struct udevice *dev)
+ {
+ 	struct rockchip_dwmmc_priv *priv = dev_get_priv(dev);
+ 
+-	if (!priv || !&priv->clk)
++	if (!priv)
+ 		return 0;
+ 
+ 	if (!memcmp(dev->name, "dwmmc", strlen("dwmmc")))
+diff --git a/include/command.h b/include/command.h
+index 681084b9ea3e21a81665dd5366af44349c4c7093..6b2e81310af2e6da5e775009bbad5c3dcf734959 100644
+--- a/include/command.h
++++ b/include/command.h
+@@ -139,7 +139,7 @@ enum command_ret_t {
+  *			number of ticks the command took to complete.
+  * @return 0 if the command succeeded, 1 if it failed
+  */
+-int cmd_process(int flag, int argc, char * const argv[],
++enum command_ret_t cmd_process(int flag, int argc, char * const argv[],
+ 			       int *repeatable, unsigned long *ticks);
+ 
+ void fixup_cmdtable(cmd_tbl_t *cmdtp, int size);

@@ -1,0 +1,7 @@
+/armbian-build
+/output
+*.img
+*.img.xz
+*.img.xz.sha256
+pantherx2-validation.txt
+.DS_Store
