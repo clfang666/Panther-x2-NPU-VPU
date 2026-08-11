@@ -58,6 +58,45 @@ rsync -a ../Panther-x2-NPU-VPU/armbian/ ./
 本仓库负责内核、U-Boot、设备树和系统镜像。Rockchip MPP/RGA/RKNN 用户态库及
 具体推理模型运行环境需要在系统启动后另行安装和验证。
 
+## RKNN 组件管理
+
+`scripts/rknn-manager.sh` 可以检测、安装和删除以下三个组件：
+
+- RKNN Runtime：最小 C/C++ 板端推理运行库；
+- RKNN-Toolkit-Lite2：板端 Python 推理接口；
+- 完整 RKNN-Toolkit2：模型转换、量化、优化和导出工具。
+
+在 Panther X2 上运行交互菜单：
+
+```bash
+chmod +x scripts/rknn-manager.sh
+./scripts/rknn-manager.sh
+```
+
+不克隆仓库也可以直接下载脚本：
+
+```bash
+curl -fL \
+  https://raw.githubusercontent.com/clfang666/Panther-x2-NPU-VPU/main/scripts/rknn-manager.sh \
+  -o rknn-manager.sh
+chmod +x rknn-manager.sh
+./rknn-manager.sh
+```
+
+也可以直接执行：
+
+```bash
+./scripts/rknn-manager.sh status
+sudo ./scripts/rknn-manager.sh install runtime
+sudo ./scripts/rknn-manager.sh install lite
+sudo ./scripts/rknn-manager.sh install toolkit
+sudo ./scripts/rknn-manager.sh remove all
+```
+
+脚本固定使用 Rockchip 官方 v2.3.2 ARM64/Python 3.12 包并校验 SHA-256。
+Python 组件分别安装到 `/opt/panther-rknn` 下的独立虚拟环境，不污染系统 Python。
+删除操作只自动清理由此脚本创建的文件，外部安装只检测和报告。
+
 ## 上游项目
 
 - [Armbian build](https://github.com/armbian/build)
