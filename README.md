@@ -2,7 +2,15 @@
 
 - 🚀本项目完全由chatgpt完成
 - 让Panther X2可以驱动NPU/VPU/GPU
+- 使用NPU需要先安装RKNN-Toolkit2
+```bash
+curl -fL \
+  https://raw.githubusercontent.com/clfang666/Panther-x2-NPU-VPU/main/scripts/rknn-manager.sh \
+  -o rknn-manager.sh
 
+chmod +x rknn-manager.sh
+./rknn-manager.sh
+```
 
 GitHub Actions 会获取固定版本的 Armbian 构建框架，生成 Ubuntu 24.04 Noble 镜像，并校验
 Rockchip BSP 6.1 的 VPU、NPU、RGA 和 IEP 驱动配置。
