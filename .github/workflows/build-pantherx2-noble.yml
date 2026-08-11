@@ -300,8 +300,14 @@ jobs:
           cd /builder/build/output/images
           image="$(find . -maxdepth 1 -type f -name '*.img' -print -quit)"
           test -n "${image}"
-          xz --threads=0 -3 --force "${image}"
-          sha256sum "${image}.xz" > "${image}.xz.sha256"
+          compressed="${image}.xz"
+          temporary="${compressed}.tmp"
+
+          xz --threads=0 -3 --stdout "${image}" > "${temporary}"
+          mv -- "${temporary}" "${compressed}"
+          sha256sum "${compressed}" > "${compressed}.sha256"
+          sha256sum --check "${compressed}.sha256"
+          rm -- "${image}"
           ls -lh .
 
       - name: Upload verified firmware
