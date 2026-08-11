@@ -55,6 +55,7 @@ jobs:
           grep -q 'BOOTPATCHDIR="u-boot-panther-x2-radxa"' armbian/config/boards/panther-x2-vendor.csc
           grep -q 'rk3566-panther-x2.dtb' armbian/userpatches/kernel/rk35xx-vendor-6.1/0001-arm64-dts-rockchip-add-panther-x2-bsp61-accel.patch
           grep -q 'rknpu-supply = <0x149>' armbian/userpatches/kernel/rk35xx-vendor-6.1/0001-arm64-dts-rockchip-add-panther-x2-bsp61-accel.patch
+          grep -q 'interrupt-names = "npu_irq"' armbian/userpatches/kernel/rk35xx-vendor-6.1/0001-arm64-dts-rockchip-add-panther-x2-bsp61-accel.patch
 
       - name: Reclaim runner disk space
         shell: bash
@@ -174,6 +175,20 @@ jobs:
             echo "OK DTB property: ${node}/${property}=${actual}"
           }
 
+          expect_fdt_string() {
+            local dtb="$1"
+            local node="$2"
+            local property="$3"
+            local expected="$4"
+            local actual
+            actual="$(sudo fdtget -t s "${dtb}" "${node}" "${property}" 2>/dev/null || true)"
+            if [[ "${actual}" != "${expected}" ]]; then
+              echo "::error title=DTB property mismatch::${node}/${property}: expected=${expected}, actual=${actual:-<missing>}"
+              return 1
+            fi
+            echo "OK DTB property: ${node}/${property}=${actual}"
+          }
+
           image="$(find /builder/build/output/images -maxdepth 1 -type f -name '*.img' -print -quit)"
           if [[ -z "${image}" ]]; then
             echo '::error title=Missing firmware image::No .img file was generated'
@@ -268,6 +283,7 @@ jobs:
 
           expect_fdt_status "${dtb}" /video-codec@fdea0400 disabled
           expect_fdt_hex "${dtb}" /npu@fde40000 rknpu-supply 149
+          expect_fdt_string "${dtb}" /npu@fde40000 interrupt-names npu_irq
           expect_fdt_hex "${dtb}" /bus-npu bus-supply 6b
           expect_fdt_hex "${dtb}" /bus-npu pvtm-supply 5
 

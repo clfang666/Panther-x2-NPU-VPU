@@ -12,10 +12,10 @@ index 2e989fb67554cccf19da9ae704b73797b86dcd88..728cad0286d8b4f3fd6e788159a5dc4e
  dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-evb1-ddr4-v10-linux.dtb
 diff --git a/arch/arm64/boot/dts/rockchip/rk3566-panther-x2.dts b/arch/arm64/boot/dts/rockchip/rk3566-panther-x2.dts
 new file mode 100644
-index 0000000000000000000000000000000000000000..bd398d1bd2f55a901d3337c268c45edf48e07672
+index 0000000000000000000000000000000000000000..41e6974f553d7ddcf03844fe908a4b9ac8f7f489
 --- /dev/null
 +++ b/arch/arm64/boot/dts/rockchip/rk3566-panther-x2.dts
-@@ -0,0 +1,7545 @@
+@@ -0,0 +1,7546 @@
 +/dts-v1/;
 +
 +/ {
@@ -1647,6 +1647,7 @@ index 0000000000000000000000000000000000000000..bd398d1bd2f55a901d3337c268c45edf
 +		compatible = "rockchip,rk3568-rknpu", "rockchip,rknpu";
 +		reg = <0x00 0xfde40000 0x00 0x10000>;
 +		interrupts = <0x00 0x97 0x04>;
++		interrupt-names = "npu_irq";
 +		clocks = <0x02 0x02 0x24 0x23 0x24 0x28 0x24 0x29>;
 +		clock-names = "scmi_clk", "clk", "aclk", "hclk";
 +		assigned-clocks = <0x24 0x23>;
