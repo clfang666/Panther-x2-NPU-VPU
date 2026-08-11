@@ -101,23 +101,41 @@ require_root() {
 	fi
 	command -v sudo >/dev/null 2>&1 || die "安装和删除需要 root 权限，但系统没有 sudo。"
 
-	local sudo_args=()
-	(( ASSUME_YES )) && sudo_args+=(--yes)
-	exec sudo -- "${SCRIPT_PATH}" "${sudo_args[@]}" "$@"
+	if (( ASSUME_YES )); then
+		exec sudo -- "${SCRIPT_PATH}" --yes "$@"
+	else
+		exec sudo -- "${SCRIPT_PATH}" "$@"
+	fi
 }
 
 run_menu_action() {
 	local action="$1"
 	local component="$2"
-	local sudo_args=()
+	local action_status
+	local -a command_line
 
-	(( ASSUME_YES )) && sudo_args+=(--yes)
 	if (( EUID == 0 )); then
-		"${SCRIPT_PATH}" "${sudo_args[@]}" "${action}" "${component}"
+		if (( ASSUME_YES )); then
+			command_line=("${SCRIPT_PATH}" --yes "${action}" "${component}")
+		else
+			command_line=("${SCRIPT_PATH}" "${action}" "${component}")
+		fi
 	else
 		command -v sudo >/dev/null 2>&1 || die "安装和删除需要 root 权限，但系统没有 sudo。"
-		sudo -- "${SCRIPT_PATH}" "${sudo_args[@]}" "${action}" "${component}"
+		if (( ASSUME_YES )); then
+			command_line=(sudo -- "${SCRIPT_PATH}" --yes "${action}" "${component}")
+		else
+			command_line=(sudo -- "${SCRIPT_PATH}" "${action}" "${component}")
+		fi
 	fi
+
+	if "${command_line[@]}"; then
+		return 0
+	else
+		action_status=$?
+	fi
+	warning "操作失败（退出码 ${action_status}），已返回主菜单。"
+	return 0
 }
 
 require_arm64() {
@@ -141,7 +159,9 @@ install_download_tools() {
 	command -v curl >/dev/null 2>&1 || missing=1
 	command -v file >/dev/null 2>&1 || missing=1
 	command -v sha256sum >/dev/null 2>&1 || missing=1
-	(( missing == 0 )) && return 0
+	if (( missing == 0 )); then
+		return 0
+	fi
 
 	info "安装下载和校验工具……"
 	apt-get update
@@ -184,13 +204,20 @@ runtime_candidates() {
 
 	if command -v ldconfig >/dev/null 2>&1; then
 		while IFS= read -r path; do
-			[[ -n "${path}" ]] && candidates+=("${path}")
+			if [[ -n "${path}" ]]; then
+				candidates+=("${path}")
+			fi
 		done < <(ldconfig -p 2>/dev/null | awk '$1 ~ /^librknnrt\.so/ {print $NF}')
 	fi
 
-	printf '%s\n' "${candidates[@]}" | awk 'NF && !seen[$0]++' | while IFS= read -r path; do
-		[[ -e "${path}" ]] && printf '%s\n' "${path}"
-	done
+	while IFS= read -r path; do
+		if [[ -e "${path}" ]]; then
+			printf '%s\n' "${path}"
+		fi
+	done < <(printf '%s\n' "${candidates[@]}" | awk 'NF && !seen[$0]++')
+
+	# “未找到运行库”是正常检测结果，不能让 set -e 将安装流程中止。
+	return 0
 }
 
 runtime_status() {
