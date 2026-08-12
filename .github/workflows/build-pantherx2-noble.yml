@@ -334,7 +334,7 @@ jobs:
           retention-days: 14
 
       - name: Publish GitHub Release
-        if: success() && github.event_name == 'workflow_dispatch' && inputs.publish_release
+        if: success() && (github.event_name == 'push' || inputs.publish_release)
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
