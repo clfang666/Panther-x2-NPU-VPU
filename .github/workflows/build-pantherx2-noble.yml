@@ -44,12 +44,15 @@ jobs:
 
           test -s armbian/config/boards/panther-x2-vendor.csc
           test -s armbian/userpatches/config-pantherx2-image.conf
+          test -s armbian/userpatches/extensions/remove-armbian-apt-source.sh
           test -s armbian/userpatches/kernel/rk35xx-vendor-6.1/0001-arm64-dts-rockchip-add-panther-x2-bsp61-accel.patch
           test -s armbian/userpatches/u-boot/u-boot-panther-x2-radxa/9999-fix-radxa-rock3-gcc-compat.patch
 
           grep -q '^BOARD=panther-x2-vendor$' armbian/userpatches/config-pantherx2-image.conf
           grep -q '^BRANCH=vendor$' armbian/userpatches/config-pantherx2-image.conf
           grep -q '^RELEASE=noble$' armbian/userpatches/config-pantherx2-image.conf
+          grep -q '^ENABLE_EXTENSIONS="remove-armbian-apt-source"$' armbian/userpatches/config-pantherx2-image.conf
+          grep -q '^function post_repo_customize_image__remove_invalid_armbian_list()' armbian/userpatches/extensions/remove-armbian-apt-source.sh
           grep -q 'KERNELBRANCH="commit:5280f9b4336199c4025c8eed894d2b4e2268dcc6"' armbian/config/boards/panther-x2-vendor.csc
           grep -q 'BOOTBRANCH="commit:c55987146f4f9b20f7cb2f917ca88300419afe8d"' armbian/config/boards/panther-x2-vendor.csc
           grep -q 'BOOTPATCHDIR="u-boot-panther-x2-radxa"' armbian/config/boards/panther-x2-vendor.csc
@@ -148,6 +151,16 @@ jobs:
             echo "OK value: ${label}"
           }
 
+          require_absent() {
+            local path="$1"
+            local label="$2"
+            if [[ -e "${path}" || -L "${path}" ]]; then
+              echo "::error title=Unexpected firmware file::${label}: ${path}"
+              return 1
+            fi
+            echo "OK absent: ${label}"
+          }
+
           expect_fdt_status() {
             local dtb="$1"
             local node="$2"
@@ -244,6 +257,7 @@ jobs:
           require_file "${env_file}" '/boot/armbianEnv.txt'
           require_file "${kernel_config}" 'kernel configuration'
           require_file "${dtb}" 'Panther X2 DTB'
+          require_absent "${mount_dir}/etc/apt/sources.list.d/armbian.list" 'invalid Armbian APT source'
 
           require_line "${os_release}" '^VERSION_ID="24\.04"$' 'Ubuntu version is 24.04'
           require_line "${os_release}" '^UBUNTU_CODENAME=noble$' 'Ubuntu codename is Noble'
