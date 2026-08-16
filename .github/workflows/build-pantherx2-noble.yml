@@ -52,7 +52,8 @@ jobs:
           grep -q '^BRANCH=vendor$' armbian/userpatches/config-pantherx2-image.conf
           grep -q '^RELEASE=noble$' armbian/userpatches/config-pantherx2-image.conf
           grep -q '^ENABLE_EXTENSIONS="remove-armbian-apt-source"$' armbian/userpatches/config-pantherx2-image.conf
-          grep -q '^function post_repo_customize_image__remove_invalid_armbian_list()' armbian/userpatches/extensions/remove-armbian-apt-source.sh
+          grep -q '^function custom_apt_repo__remove_invalid_armbian_sources()' armbian/userpatches/extensions/remove-armbian-apt-source.sh
+          grep -q '^function post_repo_customize_image__remove_invalid_armbian_sources()' armbian/userpatches/extensions/remove-armbian-apt-source.sh
           grep -q 'KERNELBRANCH="commit:5280f9b4336199c4025c8eed894d2b4e2268dcc6"' armbian/config/boards/panther-x2-vendor.csc
           grep -q 'BOOTBRANCH="commit:c55987146f4f9b20f7cb2f917ca88300419afe8d"' armbian/config/boards/panther-x2-vendor.csc
           grep -q 'BOOTPATCHDIR="u-boot-panther-x2-radxa"' armbian/config/boards/panther-x2-vendor.csc
@@ -258,6 +259,7 @@ jobs:
           require_file "${kernel_config}" 'kernel configuration'
           require_file "${dtb}" 'Panther X2 DTB'
           require_absent "${mount_dir}/etc/apt/sources.list.d/armbian.list" 'invalid Armbian APT source'
+          require_absent "${mount_dir}/etc/apt/sources.list.d/armbian.sources" 'invalid Armbian Deb822 APT source'
 
           require_line "${os_release}" '^VERSION_ID="24\.04"$' 'Ubuntu version is 24.04'
           require_line "${os_release}" '^UBUNTU_CODENAME=noble$' 'Ubuntu codename is Noble'
@@ -272,6 +274,10 @@ jobs:
           require_line "${kernel_config}" '^CONFIG_ROCKCHIP_MPP_RKVDEC2=y$' 'RKVDEC2 enabled'
           require_line "${kernel_config}" '^CONFIG_ROCKCHIP_MPP_RKVENC=y$' 'RKVENC enabled'
           require_line "${kernel_config}" '^CONFIG_ROCKCHIP_RKNPU=y$' 'RKNPU enabled'
+          require_line "${kernel_config}" '^CONFIG_MEDIA_USB_SUPPORT=y$' 'USB media support enabled'
+          require_line "${kernel_config}" '^CONFIG_USB_VIDEO_CLASS=y$' 'UVC camera driver enabled'
+          require_line "${kernel_config}" '^CONFIG_USB_XHCI_HCD=y$' 'XHCI host driver enabled'
+          require_line "${kernel_config}" '^CONFIG_USB_DWC3=y$' 'DWC3 controller driver enabled'
 
           while IFS= read -r node; do
             expect_fdt_status "${dtb}" "${node}" okay
@@ -293,9 +299,15 @@ jobs:
           /iommu@fdf40f00
           /rkvdec@fdf80200
           /iommu@fdf80800
+          /usbdrd
+          /usbdrd/usb@fcc00000
+          /usb2-phy@fe8a0000
+          /usb2-phy@fe8a0000/otg-port
           NODES
 
           expect_fdt_status "${dtb}" /video-codec@fdea0400 disabled
+          expect_fdt_string "${dtb}" /usbdrd/usb@fcc00000 dr_mode host
+          expect_fdt_string "${dtb}" /usbdrd/usb@fcc00000 maximum-speed high-speed
           expect_fdt_hex "${dtb}" /npu@fde40000 rknpu-supply 149
           expect_fdt_string "${dtb}" /npu@fde40000 interrupt-names npu_irq
           expect_fdt_hex "${dtb}" /bus-npu bus-supply 6b

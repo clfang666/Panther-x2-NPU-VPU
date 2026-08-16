@@ -1,14 +1,33 @@
 #!/usr/bin/env bash
 
-# The pinned Armbian framework creates its repository configuration before
-# invoking this hook. Remove the invalid legacy source from the finished rootfs.
-function post_repo_customize_image__remove_invalid_armbian_list() {
-	local armbian_list="${SDCARD}/etc/apt/sources.list.d/armbian.list"
+# Remove both the legacy one-line format and the current Deb822 format.
+function remove_invalid_armbian_apt_sources() {
+	local sources_dir="${SDCARD}/etc/apt/sources.list.d"
+	local source
+	local -a invalid_sources=(
+		"${sources_dir}/armbian.list"
+		"${sources_dir}/armbian.sources"
+	)
 
-	display_alert "Removing invalid Armbian APT source" "/etc/apt/sources.list.d/armbian.list" "info"
-	rm -f -- "${armbian_list}"
+	for source in "${invalid_sources[@]}"; do
+		if [[ -e "${source}" || -L "${source}" ]]; then
+			display_alert "Removing invalid Armbian APT source" "${source#${SDCARD}}" "info"
+			rm -f -- "${source}"
+		fi
 
-	if [[ -e "${armbian_list}" || -L "${armbian_list}" ]]; then
-		exit_with_error "Failed to remove invalid Armbian APT source" "${armbian_list}"
-	fi
+		if [[ -e "${source}" || -L "${source}" ]]; then
+			exit_with_error "Failed to remove invalid Armbian APT source" "${source}"
+		fi
+	done
+}
+
+# image-late runs after Armbian creates its source, but before post_repo_apt_update.
+function custom_apt_repo__remove_invalid_armbian_sources() {
+	[[ "${CUSTOM_REPO_WHEN:-}" == "image-late" ]] || return 0
+	remove_invalid_armbian_apt_sources
+}
+
+# Defense in depth: make sure no later build step restored either source file.
+function post_repo_customize_image__remove_invalid_armbian_sources() {
+	remove_invalid_armbian_apt_sources
 }
