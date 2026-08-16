@@ -880,14 +880,14 @@ index 0000000000000000000000000000000000000000..41e6974f553d7ddcf03844fe908a4b9a
 +		#address-cells = <0x02>;
 +		#size-cells = <0x02>;
 +		ranges;
-+		status = "disabled";
++		status = "okay";
 +		phandle = <0x137>;
 +
 +		usb@fcc00000 {
 +			compatible = "snps,dwc3";
 +			reg = <0x00 0xfcc00000 0x00 0x400000>;
 +			interrupts = <0x00 0xa9 0x04>;
-+			dr_mode = "otg";
++			dr_mode = "host";
 +			phy_type = "utmi_wide";
 +			power-domains = <0x26 0x0f>;
 +			resets = <0x24 0x94>;
@@ -902,7 +902,7 @@ index 0000000000000000000000000000000000000000..41e6974f553d7ddcf03844fe908a4b9a
 +			snps,parkmode-disable-hs-quirk;
 +			snps,parkmode-disable-ss-quirk;
 +			quirk-skip-phy-init;
-+			status = "disabled";
++			status = "okay";
 +			phys = <0x28>;
 +			phy-names = "usb2-phy";
 +			extcon = <0x29>;
@@ -4200,7 +4200,7 @@ index 0000000000000000000000000000000000000000..41e6974f553d7ddcf03844fe908a4b9a
 +
 +		otg-port {
 +			#phy-cells = <0x00>;
-+			status = "disabled";
++			status = "okay";
 +			phandle = <0x28>;
 +		};
 +	};

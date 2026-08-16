@@ -15,9 +15,9 @@ chmod +x rknn-manager.sh
 GitHub Actions 会获取固定版本的 Armbian 构建框架，生成 Ubuntu 24.04 Noble 镜像，并校验
 Rockchip BSP 6.1 的 VPU、NPU、RGA 和 IEP 驱动配置。
 
-镜像构建使用 `post_repo_customize_image` 扩展钩子删除错误的
-`/etc/apt/sources.list.d/armbian.list`。成品校验会确认该文件不存在，避免上传仍含错误
-Armbian 软件源的镜像。
+镜像构建在最终 `apt update` 前删除错误的 `/etc/apt/sources.list.d/armbian.list`
+和 `/etc/apt/sources.list.d/armbian.sources`，并在后期再次清理。成品校验会确认这两个
+文件均不存在，避免上传仍含错误 Armbian 软件源的镜像。
 
 ## 固定构建输入
 
